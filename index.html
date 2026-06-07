@@ -156,6 +156,8 @@
   .cev{margin-top:9px;font-size:12.5px;color:var(--txt-dim);background:var(--panel-2);border:1px solid var(--line);border-left:2px solid var(--accent);border-radius:8px;padding:8px 11px;white-space:pre-wrap;}
   .cev .evlbl{display:block;font-family:'IBM Plex Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--txt-faint);margin-bottom:3px;}
   .cev.empty{color:var(--txt-faint);font-style:italic;}
+  .ctodo{margin-top:8px;font-size:12.5px;color:var(--txt);background:var(--panel-2);border:1px solid var(--line);border-left:2px solid var(--op);border-radius:8px;padding:8px 11px;white-space:pre-wrap;}
+  .ctodo .evlbl{display:block;font-family:'IBM Plex Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--op);margin-bottom:3px;}
   .vblock{align-self:flex-start;max-width:92%;background:var(--panel-2);border:1px solid var(--op);border-radius:12px;padding:11px 13px;font-size:13px;}
   .vblock .vk{font-family:'IBM Plex Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--op);margin:8px 0 2px;}
   .vblock .vk:first-child{margin-top:0;}
@@ -317,10 +319,12 @@ const I18N={
   btnAssist:`✦ Assist`, btnReassist:`✦ Redo`,
   composePh:`Type your answer…`, send:`Send`,
   shSub:(fw,s)=>`${fw} · self-rated: ${s}`,
-  vHave:`What you have`, vTodo:`To become compliant`, vSuggested:`Suggested status — confirm:`,
+  vHave:`What you have`, vTodo:`To become compliant`, vSuggested:`Suggested status — confirm:`, vPickOpt:`Optional — set a status:`,
   confirmed:(s)=>`✓ You confirmed: ${s}`,
   parseFail:`The model didn't return a clean verdict. Read its reply above and set the status with the buttons.`,
   needWebGPU:`No WebGPU here — pick a provider with your own key above, or use Chrome/Edge.`,
+  wlBoot:`Loading the in-browser model… the first run downloads it (~1–5 GB) and can take a few minutes.`,
+  thinking:`Thinking…`,
   err:`Error:`,
   planEmpty:`Run Assist on at least one control first.`,
   reportTitle:`CloseFew — remediation plan`, gen:`Generated`,
@@ -366,10 +370,12 @@ const I18N={
   btnAssist:`✦ Assist`, btnReassist:`✦ Rifai`,
   composePh:`Scrivi la tua risposta…`, send:`Invia`,
   shSub:(fw,s)=>`${fw} · autovalutato: ${s}`,
-  vHave:`Cosa hai`, vTodo:`Per diventare conforme`, vSuggested:`Stato suggerito — conferma:`,
+  vHave:`Cosa hai`, vTodo:`Per diventare conforme`, vSuggested:`Stato suggerito — conferma:`, vPickOpt:`Facoltativo — imposta uno stato:`,
   confirmed:(s)=>`✓ Hai confermato: ${s}`,
   parseFail:`Il modello non ha restituito un verdetto pulito. Leggi la risposta qui sopra e imposta lo stato coi pulsanti.`,
   needWebGPU:`Niente WebGPU qui — scegli un provider con la tua chiave qui sopra, o usa Chrome/Edge.`,
+  wlBoot:`Carico il modello nel browser… al primo avvio lo scarico (~1–5 GB) e può volerci qualche minuto.`,
+  thinking:`Sto ragionando…`,
   err:`Errore:`,
   planEmpty:`Esegui Assist su almeno un controllo prima.`,
   reportTitle:`CloseFew — piano di remediation`, gen:`Generato`,
@@ -498,6 +504,7 @@ function renderList(){const t=T();const list=byId('list');if(!DATA){list.innerHT
   const ev=c.note?`<div class="cev"><span class="evlbl">${esc(t.evLbl)}</span>${esc(c.note)}</div>`:`<div class="cev empty"><span class="evlbl">${esc(t.evLbl)}</span>${esc(t.evEmpty)}</div>`;
   const aiBadge=c.ai&&c.ai.final?`<span class="cstat ai">AI ✓ ${esc(statusLabel(c.ai.final))}</span>`:'';
   const done=c.ai&&c.ai.done;
+  const todo=(done&&(c.ai.todo||c.ai.have))?`<div class="ctodo"><span class="evlbl">${esc(t.vTodo)}</span>${esc(c.ai.todo||c.ai.have)}</div>`:'';
   return `<div class="group">
    <div class="ghead">
      <span class="gsub">${esc(c.ref)}</span>
@@ -507,6 +514,7 @@ function renderList(){const t=T();const list=byId('list');if(!DATA){list.innerHT
    </div>
    <div class="cdesc">${esc(L(c.d))}</div>
    ${ev}
+   ${todo}
   </div>`;}).join('');
 }
 byId('list').addEventListener('click',e=>{const b=e.target.closest&&e.target.closest('.gbtn');if(b)openSheet(parseInt(b.getAttribute('data-i'),10));});
@@ -515,22 +523,29 @@ byId('list').addEventListener('click',e=>{const b=e.target.closest&&e.target.clo
 const MAXQ=3;
 function sysPrompt(c){const lang=(LANG==='it'?'Italian':'English');const fw=L(NAMES[DATA.fw]);
  const stMap={imp:'Implemented',part:'Partial',no:'Not implemented',na:'N/A','':'Not assessed'};
- return `You are a pragmatic GRC assistant for a self-assessment against ${fw}. Reply in ${lang}.
-CONTROL ${c.ref}: ${L(c.t)}
-WHAT IT REQUIRES: ${L(c.d)}
-FULLY COMPLIANT LOOKS LIKE: ${L(c.g)}
-USER'S SELF-RATED STATUS: ${stMap[c.status]||'Not assessed'}
-USER'S EVIDENCE: ${c.note?c.note:'(none provided)'}
+ return `You are a friendly helper for a NON-EXPERT at a small organization (a small business, association, freelancer or one-person company). They are NOT a security, IT or legal professional and do NOT know technical or compliance jargon. This item comes from ${fw}.
 
-Determine the REAL compliance status and what's missing. Ask at most ${MAXQ} short, specific clarifying questions, ONE AT A TIME, only if the evidence is unclear. When confident (or after ${MAXQ} questions), STOP asking and output ONLY this block, nothing else:
+ITEM ${c.ref}: ${L(c.t)}
+WHAT IT REQUIRES: ${L(c.d)}
+WHAT "FULLY DONE" LOOKS LIKE: ${L(c.g)}
+THEIR SELF-RATING: ${stMap[c.status]||'Not assessed'}
+WHAT THEY WROTE: ${c.note?c.note:'(nothing written)'}
+
+LANGUAGE RULES — these are the most important rules, follow them strictly:
+- Write everything in ${lang}, in the simplest everyday words, as if explaining to a friend who runs a small shop and has never heard security or legal terms.
+- NO jargon. Do not use technical, security, legal or framework words (avoid things like "control", "policy", "DPIA", "encryption at rest", "data subject", "lawful basis", "asset inventory", "MFA", "segmentation", "RACI"...). If a term is truly unavoidable, immediately explain it in 3-4 plain words in round brackets.
+- Ask about what they actually DO day to day, never about the standard or its wording. For example, instead of "Have you mapped your legal and contractual obligations?" ask something like "Do you know which rules or laws your work has to follow — for example privacy rules, or things your clients require in their contracts?"
+- One short, concrete question at a time. Never a list of questions. Keep each question to one sentence a normal person can answer.
+
+Your goal: understand where they really stand and what to do next. Ask at most ${MAXQ} simple questions, ONE AT A TIME, and only if you still need to know something. When you have enough (or after ${MAXQ} questions), STOP asking and output ONLY this block, nothing else:
 ===VERDICT===
 STATUS: imp | part | no
-HAVE: <one or two sentences on what they already have, in ${lang}>
+HAVE: <1-2 plain sentences, no jargon, on what they already have, in ${lang}>
 TODO:
-- <concrete action, in ${lang}>
-- <concrete action>
+- <a small concrete next step in plain ${lang}, something they can actually do>
+- <another simple step>
 ===END===
-Rules: never output a question together with the verdict; one sentence per question; assume nothing they didn't say; orientation only, not legal advice.`;}
+Other rules: never mix a question with the verdict; assume nothing they did not say; this is friendly orientation, not legal advice; keep the TODO steps small, practical and jargon-free.`;}
 function parseVerdict(txt){const m=txt.match(/===VERDICT===([\s\S]*?)(?:===END===|$)/i);if(!m)return null;const body=m[1];
  const sm=body.match(/STATUS:\s*(imp|part|no|implemented|partial|not[\s_]*implemented|implementato|parziale|non[\s_]*implementato|totale|niente)/i);
  let st='';if(sm){const v=sm[1].toLowerCase();if(/^(imp|impl|total)/.test(v))st='imp';else if(/^(part|parz)/.test(v))st='part';else if(/^(no|niente)/.test(v))st='no';}
@@ -545,13 +560,14 @@ function openSheet(i){CUR=i;const c=DATA.items[i];const t=T();
 function closeSheet(){byId('sheet').classList.remove('open');}
 function renderChat(){const c=DATA.items[CUR];const ai=c.ai;const t=T();const box=byId('chat');
  let h=ai.chat.map(m=>{const cl=m.role==='user'?'user':(m.role==='sys'?'sys':'ai');return `<div class="msg ${cl}">${esc(m.content)}</div>`;}).join('');
- if(ai.done&&ai.suggested){const sl=statusLabel(ai.suggested);
-  h+=`<div class="vblock"><div class="vk">${esc(t.vHave)}</div><div class="vv">${esc(ai.have||'—')}</div><div class="vk">${esc(t.vTodo)}</div><div class="vv">${esc(ai.todo||'—')}</div></div>`;
+ if(ai.done){
+  if(ai.have||ai.todo){
+   h+=`<div class="vblock"><div class="vk">${esc(t.vHave)}</div><div class="vv">${esc(ai.have||'—')}</div><div class="vk">${esc(t.vTodo)}</div><div class="vv">${esc(ai.todo||'—')}</div></div>`;
+  } else if(!ai.suggested){ h+=`<div class="msg sys">${esc(t.parseFail)}</div>`; }
   if(ai.final){ h+=`<div class="accepted">${esc(t.confirmed(statusLabel(ai.final)))}</div>`; }
-  else { h+=`<div class="msg sys">${esc(t.vSuggested)}</div><div class="verdicts">`+
+  else { h+=`<div class="msg sys">${esc(ai.suggested?t.vSuggested:t.vPickOpt)}</div><div class="verdicts">`+
     ['imp','part','no'].map(s=>`<button class="${s===ai.suggested?'primary':''}" data-s="${s}">${esc(statusLabel(s))}</button>`).join('')+`</div>`; }
- } else if(ai.done&&!ai.suggested){ h+=`<div class="msg sys">${esc(t.parseFail)}</div><div class="verdicts">`+
-    ['imp','part','no'].map(s=>`<button data-s="${s}">${esc(statusLabel(s))}</button>`).join('')+`</div>`; }
+ }
  box.innerHTML=h;box.scrollTop=box.scrollHeight;
  byId('compose').disabled=ai.done||BUSY;byId('btnSend').disabled=ai.done||BUSY;
  box.querySelectorAll('.verdicts button').forEach(b=>b.onclick=()=>confirmStatus(b.getAttribute('data-s')));
@@ -561,19 +577,22 @@ function send(){const c=DATA.items[CUR];if(BUSY||c.ai.done)return;const ta=byId(
  c.ai.chat.push({role:'user',content:v});ta.value='';renderChat();turn(null);}
 async function turn(kickoff){const c=DATA.items[CUR];const ai=c.ai;const t=T();
  if(cfg().kind==='webllm'&&!navigator.gpu){ai.chat.push({role:'sys',content:t.needWebGPU});renderChat();return;}
- BUSY=true;renderChat();
+ BUSY=true;
  const hist=ai.chat.filter(m=>m.role==='user'||m.role==='assistant').map(m=>({role:m.role==='assistant'?'assistant':'user',content:m.content}));
  if(kickoff)hist.push({role:'user',content:kickoff});
  if(ai.qcount>=MAXQ)hist.push({role:'user',content:'You have asked enough. Output the verdict block now.'});
  const bub={role:'assistant',content:''};ai.chat.push(bub);
- let prog=null;
+ let prog={role:'sys',content:'⏳ '+(cfg().kind==='webllm'?t.wlBoot:t.thinking)};
+ ai.chat.splice(ai.chat.indexOf(bub),0,prog);renderChat();
  try{
-  const out=await callLLM(sysPrompt(c),hist,full=>{bub.content=full;renderChat();},p=>{ if(!prog){prog={role:'sys',content:'⏳ '+p};ai.chat.splice(ai.chat.indexOf(bub),0,prog);}else prog.content='⏳ '+p; renderChat(); });
+  const out=await callLLM(sysPrompt(c),hist,
+   full=>{ if(prog){ai.chat=ai.chat.filter(m=>m!==prog);prog=null;} bub.content=full;renderChat(); },
+   p=>{ if(prog){prog.content='⏳ '+p;} else {prog={role:'sys',content:'⏳ '+p};ai.chat.splice(ai.chat.indexOf(bub),0,prog);} renderChat(); });
   if(prog)ai.chat=ai.chat.filter(m=>m!==prog);
   const v=parseVerdict(out);
   if(v){ai.done=true;ai.suggested=v.suggested;ai.have=v.have;ai.todo=v.todo;ai.chat=ai.chat.filter(m=>m!==bub);}
   else{ai.qcount++;if(ai.qcount>MAXQ){ai.done=true;ai.suggested='';}}
- }catch(e){bub.content=(bub.content?bub.content+'\n\n':'')+t.err+' '+(e&&e.message?e.message:String(e));}
+ }catch(e){ if(prog){ai.chat=ai.chat.filter(m=>m!==prog);prog=null;} bub.content=(bub.content?bub.content+'\n\n':'')+t.err+' '+(e&&e.message?e.message:String(e));}
  BUSY=false;renderChat();renderList();
 }
 byId('compose').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}});
