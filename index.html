@@ -582,7 +582,8 @@ async function turn(kickoff){const c=DATA.items[CUR];const ai=c.ai;const t=T();
  if(kickoff)hist.push({role:'user',content:kickoff});
  if(ai.qcount>=MAXQ)hist.push({role:'user',content:'You have asked enough. Output the verdict block now.'});
  const bub={role:'assistant',content:''};ai.chat.push(bub);
- let prog={role:'sys',content:'⏳ '+(cfg().kind==='webllm'?t.wlBoot:t.thinking)};
+ const wlNeedLoad=(cfg().kind==='webllm'&&!(WL_ENGINE&&WL_MODEL===cfg().model));
+ let prog={role:'sys',content:'⏳ '+(wlNeedLoad?t.wlBoot:t.thinking)};
  ai.chat.splice(ai.chat.indexOf(bub),0,prog);renderChat();
  try{
   const out=await callLLM(sysPrompt(c),hist,
